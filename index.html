@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a2e1a">
   <title>LAXMI — Order Online</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -939,6 +941,7 @@
     signInWithEmailAndPassword, createUserWithEmailAndPassword,
     signInWithPopup, GoogleAuthProvider, sendPasswordResetEmail, updateProfile
   } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+  import { getMessaging, getToken, onMessage } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js';
   import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
   const firebaseConfig = {
@@ -956,13 +959,15 @@
   const tableParam = urlParams.get('table');
 
   const fbApp = initializeApp(firebaseConfig);
-  const auth  = getAuth(fbApp);
-  const sb    = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  const auth    = getAuth(fbApp);
+  const messaging = getMessaging(fbApp);
+  const sb      = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const googleProvider = new GoogleAuthProvider();
 
   window.supabaseClient    = sb;
   window.DEFAULT_BRANCH_ID = '7d9b6af2-c169-4961-9529-a992041ab970'; // Fallback
   window.firebaseAuth      = auth;
+  window.fcmMessaging      = messaging;
   window.rmsSignOut        = async () => { await signOut(auth); location.reload(); };
 
   const errorMap = {
@@ -2493,6 +2498,15 @@
     saveNotifications();
     renderNotifications();
     updateNotificationBadge();
+    // Also trigger push notification as a parallel layer
+    if (window.pushNotificationManager) {
+      window.pushNotificationManager.sendPushNotification({
+        title: notif.title,
+        message: notif.message,
+        icon: notif.icon || '🔔',
+        id: newNotif.id
+      });
+    }
   };
 
   function purgeOldNotifications() {
@@ -2695,6 +2709,35 @@
   });
 </script>
 
+<script src="push-notifications.js"></script>
+<script>
+(function() {
+  // ── Service Worker Registration ──
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/firebase-messaging-sw.js')
+      .then(function(reg) {
+        console.log('SW registered:', reg.scope);
+      })
+      .catch(function(err) {
+        console.warn('SW registration failed:', err);
+      });
+  }
+
+  // ── Push Notification Initialization ──
+  function initPush() {
+    if (window.pushNotificationManager && window.fcmMessaging) {
+      window.pushNotificationManager.init(window.fcmMessaging);
+      window.pushNotificationManager.initializeWithPermissionCheck();
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initPush);
+  } else {
+    initPush();
+  }
+})();
+</script>
 </body>
 </html>
 
